@@ -1,0 +1,10 @@
+---
+title: "readme"
+author: "Erin Ross"
+---
+
+This project is for my final project for PM 566: Introduction to Data Science. It looks at the relationship of age, mechanism of injury, and home/injury neighborhood with incidence of pediatric trauma in Los Angeles County.
+
+You can see the final product at my website: [https://er12457.github.io/pm566-Final](https://er12457.github.io/pm)
+
+Thanks for stopping by!
