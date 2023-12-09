@@ -206,7 +206,7 @@ Age_Table2 <- TEMIS_COI %>%
 ```
 
 |                                         | Zip Code Discordance % (n) | COI Discordance % (n) |
-|-----------------------------------------|----------------------------|-----------------------|
+|--------------------------------|----------------------|------------------|
 | **Age Group**                           |                            |                       |
 | \<1 years                               | 22.7% (145)                | 6.7% (42)             |
 | 1-4 years                               | 28.5% (988)                | 8.1% (281)            |
@@ -290,11 +290,12 @@ LACZips <- read.csv("LAC_ZipCodes_List.csv") #narrow to just LAC zip to read
 Zip_Discordance_List <- merge(Zip_Discordance_List, LACZipGeo_Injury, by = "Injury_Zip")
 Zip_Discordance_List <- merge(Zip_Discordance_List, LACZips, by = "Injury_Zip")
 
-ggplot(Zip_Discordance_List) + geom_sf(mapping = aes(geometry = geometry, fill = ZIP_Discord_Prop)) + 
+Zip_Map <- ggplot(Zip_Discordance_List) + geom_sf(mapping = aes(geometry = geometry, fill = ZIP_Discord_Prop)) + 
   theme_classic() +
-  labs(title = 'Proportion of Injuries per Zip Code of Children from Another Zip Code') +
-  scale_fill_continuous(name = "Proportion Different\nHome Zip Code")
-  
+  labs(title = "Injuries per Zip Code from Another Zip Code") +
+  scale_fill_continuous(name = "Different Home Zip")
+
+Zip_Map
 ```
 
 ## Conclusions
