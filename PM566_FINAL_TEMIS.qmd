@@ -1,0 +1,293 @@
+---
+title: "PM 566 Final: Far From Home"
+author: "Erin Ross"
+format: pdf
+editor: visual
+---
+
+## Introduction
+
+Trauma is the leading cause of death in children (CDC.gov), and therefore injury prevention is a primary public health initiative. Common mechanisms of injury change over the lifespan with changing mobility, environments, and activities engaged in. There has been some literature demonstrating differences in home/injury location by mechanism of injury (Cook et al., 2020; Mills et al., 2019), but these studies have generally examined adult patients, who have different injury patterns than children.
+
+Socioeconomic status is also related to exposure to trauma, as well as outcomes after trauma. The Childhood Opportunity Index (COI) is an index of 29 modifiable variates associated with childhood opportunity across sub-Domains of Social & Economic, Health & Environment, and Education.Children from the lowest COI neighborhoods are more 42 times more likely to experience violent injury than children from the most advantaged neighborhoods in Los Angeles County (Sarnathyakul et al., 2022).
+
+Here, we combine age and mechanism of injury to assess the changes in where children are injured as they age, gain independence, and engage in different activities, and begin to move outside of their home neighborhood.
+
+## Methods
+
+#### Data Sources
+
+Trauma data were acquired from the Los Angeles County Trauma and Emergency Medical Information System (TEMIS), which aggregates hospital and pre-hospital data from patients transported to 15 trauma centers in Los Angeles County, making this an excellent source for trauma epidemiology in Los Angeles County. The dataset used here includes encounters for patients less than 18 years old seen from January 1 2010 through December 31 2021.
+
+COI data was obtained at the 2020 zip code level from the website (diversitydatakids.com). COI are assigned to metro-normed quintiles from 1 (lowest) to 5 (highest) opportunity in the 2 sub-domains of COI, as well as a 1-5 quintile overall COI measure.
+
+#### Data Cleaning & Wrangling
+
+The TEMIS dataset came in two sheets, from 2010-2015 and 2016-2021. These sheets were combined in R and had the same variables in each dataset. The COI data was brought in as two separate dataframes then selected down to just home or injury zip code and home or injury COI to generate a home COI and an injury COI from the same table. Zip code shapefiles are obtained from the tigris package, using version year 2020. Home and injury zip code geometries were merged into one dataset using the same logic as the COI levels.
+
+Because we are interested in relationships of home and injury location, patients who are missing an injury or home zip code are excluded. The age variable was originally coded as two columns, one for the number and one for units, a new variable was generated to convert all ages into years, rounded to zero decimal places. Age groups were assigned based on mobility/activity (\<1 year, 1-4 years, 5-8 years, 9-14 years, 15-17 years).
+
+MOI categories are already defined in our dataset based on manual review of coded mechanism and diagnosis codes, and were then categorized into the larger groups of motor vehicle accident (MVC), bicycle accident, skateboard/scooter/reollerblading, pedestrian accident, assault, falls sports/recreation
+
+We will use home and injury zip codes to generate two variables indicative of discordance: one for zip code discordance, and one for COI discordance. Zip code discordance is defined as home and injury zip code have a centroid distance less than the median distance for all traumas in the dataset. COI discordance was defined as a difference in home and injury zip code COI of more than 1 level. For example, home zip code of 5 and injury zip code 3 would count as COI discordance.
+
+We will also use the geographic centroid of the zip codes to calculate the distance between home and injury location.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+library(dplyr)
+library(tidyverse)
+library(sf) # allow plotting of polygons
+library(tigris)
+options(tigris_use_cache = TRUE)
+library(webshot)
+
+#Bring in TEMIS + bind
+TEMIS_2010 <- read.csv("TEMIS_2010.csv")
+TEMIS_2015 <- read.csv("TEMIS_2015.csv")
+TEMIS <- rbind(TEMIS_2010,TEMIS_2015)
+
+#Bring in COI
+COI_Home <- read.csv("COI_ZipCodes_2020_TEMIS.csv")
+COI_Injury <- read.csv("COI_ZipCodes_2020_TEMIS.csv")
+
+#Generate home and injury zip variables to merge twice
+COI_Home$Home_Zip <- COI_Home$zip
+COI_Home$Home_COI <- COI_Home$c5_coi_met
+COI_Home <- COI_Home %>% select(Home_Zip, Home_COI)
+
+COI_Injury$Injury_Zip <- COI_Injury$zip
+COI_Injury$Injury_COI <- COI_Injury$c5_coi_met
+
+COI_Injury <- COI_Injury %>% select(Injury_Zip, Injury_COI)
+
+#Merge TEMIS + COI
+TEMIS_COI <- merge(TEMIS,COI_Home, by = "Home_Zip")
+TEMIS_COI <- merge(TEMIS_COI,COI_Injury, by = "Injury_Zip")
+
+#Bring in shapefiles
+LACZipGeo <- zctas(cb = TRUE,  starts_with = c("89","90","91","92","93"), year = 2020)
+LACZipGeo$ZCTA5CE20 <- as.numeric(as.character(LACZipGeo$ZCTA5CE20))
+
+LACZipGeo_Home <- LACZipGeo
+LACZipGeo_Home$Home_Zip <- LACZipGeo$ZCTA5CE20
+LACZipGeo_Home$Home_Zip_Center <- sf::st_centroid(LACZipGeo_Home$geometry) #make midpoint
+LACZipGeo_Home$Home_Zip_Geometry <- LACZipGeo_Home$geometry
+LACZipGeo_Home <- LACZipGeo_Home %>% select(Home_Zip, Home_Zip_Geometry, Home_Zip_Center)
+
+LACZipGeo_Injury <- LACZipGeo
+LACZipGeo_Injury$Injury_Zip <- LACZipGeo$ZCTA5CE20
+LACZipGeo_Injury$Injury_Zip_Center <- sf::st_centroid(LACZipGeo_Injury$geometry)
+LACZipGeo_Injury$Injury_Zip_Geometry <- LACZipGeo_Injury$geometry
+LACZipGeo_Injury <- LACZipGeo_Injury %>% select(Injury_Zip, Injury_Zip_Geometry, Injury_Zip_Center)
+
+#Merge in shapefiles
+TEMIS_COI <- merge(TEMIS_COI,LACZipGeo_Home, by = "Home_Zip")
+TEMIS_COI <- merge(TEMIS_COI,LACZipGeo_Injury, by = "Injury_Zip")
+
+# Bring in MOI categories
+MOI_Groups_Final <- read.csv("TEMIS_COI_GEO_MOI.csv")
+MOI_Groups_Final <- MOI_Groups_Final %>% select(Study_ID,MOI_GROUP_FINAL)
+
+TEMIS_COI <- merge(TEMIS_COI, MOI_Groups_Final, by = "Study_ID")
+
+# Make Age in Years
+TEMIS_COI <- TEMIS_COI %>%
+  mutate(Age_Years = case_when(
+    Age_Units == "Y Years" ~ Age_Number,
+    Age_Units == "M Months" ~ Age_Number/12,
+    Age_Units == "D Days" ~ 0,
+    TRUE ~ Age_Number))
+TEMIS_COI$Age_Years <- round(TEMIS_COI$Age_Years, 0)
+
+# Make age groups
+TEMIS_COI$Age_Group[TEMIS_COI$Age_Years == 0] <- 0
+TEMIS_COI$Age_Group[TEMIS_COI$Age_Years >0 & TEMIS_COI$Age_Years <5] <- 1
+TEMIS_COI$Age_Group[TEMIS_COI$Age_Years >4 & TEMIS_COI$Age_Years <9] <- 2
+TEMIS_COI$Age_Group[TEMIS_COI$Age_Years >8 & TEMIS_COI$Age_Years <15] <- 3
+TEMIS_COI$Age_Group[TEMIS_COI$Age_Years >14] <- 4
+
+# Make larger MOI buckets
+TEMIS_COI$MOI_LargerBins <- "Other"
+TEMIS_COI$MOI_LargerBins[TEMIS_COI$MOI_GROUP_FINAL == "MVC"] <- "MVC"
+TEMIS_COI$MOI_LargerBins[TEMIS_COI$MOI_GROUP_FINAL == "Bike vs Auto" | TEMIS_COI$MOI_GROUP_FINAL == "Bicycle" ] <- "Bicycle"
+TEMIS_COI$MOI_LargerBins[TEMIS_COI$MOI_GROUP_FINAL == "Ped vs Auto" | TEMIS_COI$MOI_GROUP_FINAL == "Ped vs Bike" | TEMIS_COI$MOI_GROUP_FINAL == "Pedestrian"| TEMIS_COI$MOI_GROUP_FINAL == "Ped vs Train"] <- "Pedestrian"
+TEMIS_COI$MOI_LargerBins[TEMIS_COI$MOI_GROUP_FINAL == "Assault" | TEMIS_COI$MOI_GROUP_FINAL == "Firearm" | TEMIS_COI$MOI_GROUP_FINAL == "Stabbing"] <- "Assault"
+TEMIS_COI$MOI_LargerBins[TEMIS_COI$MOI_GROUP_FINAL == "Assault" | TEMIS_COI$MOI_GROUP_FINAL == "Firearm" | TEMIS_COI$MOI_GROUP_FINAL == "Skateboard, Scooter, or Rollerskate"] <- "Skate, Scooter, Blading"
+TEMIS_COI$MOI_LargerBins[TEMIS_COI$MOI_GROUP_FINAL == "Fall"] <- "Fall"
+TEMIS_COI$MOI_LargerBins[TEMIS_COI$MOI_GROUP_FINAL == "Motorcycle/Moped"] <- "Motorcycle/Moped"
+TEMIS_COI$MOI_LargerBins[TEMIS_COI$MOI_GROUP_FINAL == "Sports" | TEMIS_COI$MOI_GROUP_FINAL == "All-Terrain or Dirt Bike" | TEMIS_COI$MOI_GROUP_FINAL == "Horse"] <- "Sports/Recreation"
+
+TEMIS_COI <- subset(TEMIS_COI, MOI_LargerBins != "Other")
+
+#Making zip code discordance by difference in zip code value
+TEMIS_COI$Injury_Zip <- as.numeric(TEMIS_COI$Injury_Zip)
+TEMIS_COI$Home_Zip <- as.numeric(TEMIS_COI$Home_Zip)
+TEMIS_COI$Zip_Diff <- TEMIS_COI$Home_Zip-TEMIS_COI$Injury_Zip
+
+TEMIS_COI$Zip_Diff_Binary[TEMIS_COI$Zip_Diff == 0] <- 0
+TEMIS_COI$Zip_Diff_Binary[TEMIS_COI$Zip_Diff != 0] <- 1
+
+# Generate Euclidian distance from trauma to home zip code
+# Takes too long with 15000 observations, make file of distinct zip code combinations and run from there
+#TEMIS_ZipCombos_Unique <- subset(TEMIS_COI, TEMIS_COI$Zip_Diff != 0)
+#TEMIS_ZipCombos_Unique <- TEMIS_ZipCombos_Unique %>% select(Home_Zip,Injury_Zip,Home_Zip_Center,Injury_Zip_Center)
+#TEMIS_ZipCombos_Unique <- distinct(TEMIS_ZipCombos_Unique) #only calculate for distinct combinations
+#TEMIS_ZipCombos_Unique$Zip_Distance <- TEMIS_ZipCombos_Unique %>% st_distance(Home_Zip_Center,Injury_Zip_Center)
+
+# Generate COI discordance
+TEMIS_COI$COI_Discord <- 0
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "Very High" & TEMIS_COI$Injury_COI == "Very Low"] <- 1
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "Very High" & TEMIS_COI$Injury_COI == "Low"] <- 1
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "Very High" & TEMIS_COI$Injury_COI == "Moderate"] <- 1
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "High" & TEMIS_COI$Injury_COI == "Very Low"] <- 1
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "High" & TEMIS_COI$Injury_COI == "Low"] <- 1
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "Moderate" & TEMIS_COI$Injury_COI == "Very High"] <- 1
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "Moderate" & TEMIS_COI$Injury_COI == "Very Low"] <- 1
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "Low" & TEMIS_COI$Injury_COI == "Very High"] <- 1
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "Low" & TEMIS_COI$Injury_COI == "High"] <- 1
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "Very Low" & TEMIS_COI$Injury_COI == "Very High"] <- 1
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "Very Low" & TEMIS_COI$Injury_COI == "High"] <- 1
+TEMIS_COI$COI_Discord[TEMIS_COI$Home_COI == "Very Low" & TEMIS_COI$Injury_COI == "Moderate"] <- 1
+```
+
+#### Exploratory Data Analysis
+
+First, the univariate statistics were evaluated, including age, age groups, mechanism of injury frequencies, mortality, and injury severity score. Then the percent of injuries with discordant zip code or COI each age group and mechanism category. The data cleaning process eliminated any missingness prior to exploratory analysis with the exception of some missing mortality and ISS data, though these were very small compared to our n (15 missing mortality, 184 missing ISS).
+
+## Results
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+# Table 1: Cohort Description
+MOI_Table1 <- TEMIS_COI %>% 
+  group_by(MOI_LargerBins) %>%
+  summarize(MOI_n = n_distinct(Study_ID),
+            MOI_prop = n_distinct(Study_ID)/15377)
+
+TEMIS_COI$ISS <- as.numeric(TEMIS_COI$ISS)
+```
+
+The cohort is described in Table 1 below. The median age was 12 years old, and most children who were injured were mobile, with the upper 75% of injuries occurring in those at or over 4 years of age. Falls were the most common mechanism of injury for this cohort of children, followed by motor vehicle accidents and pedestrian accidents (hit by car, bike, or other accident while walking). Mortality was low at around 2%, and the cohort was overall modestly injured, with a median ISS of 5; profound injury is defined as greater than 25, maximum possible is 75.
+
+Almost half of injuries occurred outside the child's home zip code, however only 13% occurred in a zip code with a discordance COI from the child's own home COI.
+
+| Cohort Characteristic                   | Median (IQR) or % (n) |
+|-----------------------------------------|-----------------------|
+| Age                                     | 12 years (4-16)       |
+| Mechanism of Injury                     |                       |
+| Assault                                 | 1.6% (253)            |
+| Bicycle                                 | 8.9% (1376)           |
+| Fall                                    | 32.0% (4928)          |
+| Motor Vehicle Accident                  | 19.2% (2946)          |
+| Motorcycle/Moped                        | 3.2% (490)            |
+| Pedestrian                              | 18.1% (2777)          |
+| Skateboard, Scooter, Rollerblading, etc | 12.2% (1880)          |
+| Sports/Recreation                       | 4.7% (727)            |
+| Mortality                               | 2.3% (15377)          |
+| Injury Severity Score                   | 5 (1-9)               |
+| Home/Injury Zip Code Discordance        | 45.3% (6792)          |
+| Home/Injury COI Discordance             | 13.0% (2005)          |
+
+When examining home/injury zip code and COI discordance by age group, we see that zip code discordance increases with age. Zip code discordance occurred in just over a quarter of injuries in toddlers, compared to more than half of injuries in late teens. Although teens had greater home/injury zip code discordance, they did not get injured in zip codes that were discordant from their own home zip code's COI level, as only 16% of injuries in children ages 15-17 were COI discordant.
+
+```{r, echo =FALSE, message = FALSE, warning = FALSE}
+#Table 2: Zip and COI discordance by MOI
+MOI_Table2 <- TEMIS_COI %>% 
+  group_by(MOI_LargerBins) %>%
+  summarize(Zip_Discord_n = sum(Zip_Diff_Binary),
+            Zip_Discord_prop = sum(Zip_Diff_Binary)/n_distinct(Study_ID),
+            COI_Discord_n = sum(COI_Discord),
+            COI_Discord_prop = sum(COI_Discord)/n_distinct(Study_ID))
+Age_Table2 <- TEMIS_COI %>% 
+  group_by(Age_Group) %>%
+  summarize(Zip_Discord_n = sum(Zip_Diff_Binary),
+            Zip_Discord_prop = sum(Zip_Diff_Binary)/n_distinct(Study_ID),
+            COI_Discord_n = sum(COI_Discord),
+            COI_Discord_prop = sum(COI_Discord)/n_distinct(Study_ID))
+```
+
+|                                         | Zip Code Discordance % (n) | COI Discordance % (n) |
+|-----------------------------------|--------------------|-----------------|
+| **Age Group**                           |                            |                       |
+| \<1 years                               | 22.7% (145)                | 6.7% (42)             |
+| 1-4 years                               | 28.5% (988)                | 8.1% (281)            |
+| 5-8 years                               | 41.8% (778)                | 12.5% (232)           |
+| 9-14 years                              | 49.4% (1894)               | 14.4% (553)           |
+| 15-17 years                             | 56.8% (3167)               | 16.1% (897)           |
+| **Mechanism of Injury**                 |                            |                       |
+| Assault                                 | 45.5% (115)                | 8.3% (21)             |
+| Bicycle                                 | 43.7% (602)                | 9.8% (135)            |
+| Fall                                    | 24.3% (1198)               | 6.9% (339)            |
+| Motor Vehicle Accident                  | 73.6% (2167)               | 23.8% (700)           |
+| Motorcycle/Moped                        | 56.7% (278)                | 19.6% (96)            |
+| Pedestrian                              | 43.5% (1209)               | 11.0% (305)           |
+| Skateboard, Scooter, Rollerblading, etc | 47.1% (885)                | 11.4% (215)           |
+| Sports/Recreation                       | 71.2% (518)                | 26.7% (194)           |
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+library(ggplot2)
+
+Age_Discord <- TEMIS_COI %>% 
+  group_by(Age_Years) %>%
+  summarize(Zip_Discord_prop = sum(Zip_Diff_Binary)/n_distinct(Study_ID),
+            COI_Discord_prop = sum(COI_Discord)/n_distinct(Study_ID))
+
+ggplot(data=Age_Discord) + 
+  geom_line(aes(x=Age_Years, y=Zip_Discord_prop, color = "Zip_Discord_prop")) + 
+  geom_line(aes(x=Age_Years, y=COI_Discord_prop, color = "COI_Discord_prop")) +
+  theme_classic() +
+  labs(title = "Percent of Injuries with Home/Injury Zip Code or COI Level Discordance", color = "Legend") +
+  scale_x_continuous(name = "Age (years)", breaks = seq(0,18, by = 1)) +
+  scale_y_continuous(name = "Percent Injuries with Discordance", labels = scales::percent) +
+  scale_color_manual(values = c( "Zip_Discord_prop" = "#3452eb", "COI_Discord_prop" = "#ba2261"),
+labels = c("COI", "Zip Code"))
+```
+
+In the figure combining age and mechanism of injury with zip code discordance, we see that zip code discordance of MVCs is fairly consistent across all ages, though the most MVCs occur in 16-17 year-olds. Assault also was more consistent in zip code discordance over time, as we did not include child abuse in this dataset. Most falls in younger children are happening in the home zip code, while falls at older ages start to happen away from home with age.
+
+In contrast, again, overall COI discordance was lower than zip code discordance, with slightly more COI discordance in MVCs for younger children than for older who are driving themselves.
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+# Interactive figures
+library(plotly)
+
+Age_MOI_DiscordCOI <- TEMIS_COI %>% 
+  group_by(Age_Years, MOI_LargerBins) %>%
+  summarize(COI_Discord_n = sum(COI_Discord),
+            COI_Discord_prop = sum(COI_Discord)/n_distinct(Study_ID))
+
+Age_MOI_DiscordZip <- TEMIS_COI %>% 
+  group_by(Age_Years, MOI_LargerBins) %>%
+  summarize(Zip_Discord_n = sum(Zip_Diff_Binary),
+            Zip_Discord_prop = sum(Zip_Diff_Binary)/n_distinct(Study_ID))
+
+# Scatterplot
+Age_MOI_DiscordCOI %>% 
+  plot_ly(x = ~Age_Years, y = ~COI_Discord_prop,
+          type = 'scatter', mode = 'markers', color = ~MOI_LargerBins,
+          size = ~COI_Discord_n, sizes = c(5, 70), marker = list(sizemode='diameter', opacity=0.5)) %>%
+  layout(title = 'Age, Mechanism, and Home/Injury COI Discordance in Childhood Trauma',
+         yaxis = list(title ='Proportion with Discordant COI'),
+         xaxis = list(title = 'Age (years)'))
+
+Age_MOI_DiscordZip %>% 
+  plot_ly(x = ~Age_Years, y = ~Zip_Discord_prop,
+          type = 'scatter', mode = 'markers', color = ~MOI_LargerBins,
+          size = ~Zip_Discord_n, sizes = c(5, 70), marker = list(sizemode='diameter', opacity=0.5)) %>%
+  layout(title = 'Age, Mechanism, and Home/Injury Zip Code Discordance in Childhood Trauma',
+         yaxis = list(title ='Proportion with Discordant Home/Injury Zip Code'),
+         xaxis = list(title = 'Age (years)'))
+```
+
+## Conclusions
+
+These results demonstrate age-and mechanism-specific patterns in injuries that demonstrate movement patterns of children. Although children are injured outside their home zip code more often with age, they are not injured in zip codes with different socioeconomic levels from their home zip codes. We see that teens who are getting in cars are traveling away from home and having traffic accidents far from home, but are injured in neighborhoods similar to their own.
+
+## References
+
+https://www.cdc.gov/nchs/fastats/child-health.htm
+
+Cook A, Harris R, Brown HE, Bedrick E. Geospatial characteristics of non-motor vehicle and assault-related trauma events in greater Phoenix, Arizona. Inj Epidemiol. 2020 Jun 15;7(1):34.
+
+Mills B, Hajat A, Rivara F, Nurius P, Matsueda R, Rowhani-Rahbar A. Firearm assault injuries by residence and injury occurrence location. Inj Prev. 2019 Sep;25(Suppl 1):i12-i15.
+
+Sarnthiyakul S, Ross EE, Ourshalimian S, Spurrier RG, Chaudhari PP. Neighborhood deprivation and childhood opportunity indices are associated with violent injury among children in Los Angeles County. J Trauma Acute Care Surg. 2023 Sep 1;95(3):397-402.
