@@ -206,7 +206,7 @@ Age_Table2 <- TEMIS_COI %>%
 ```
 
 |                                         | Zip Code Discordance % (n) | COI Discordance % (n) |
-|-----------------------------------|--------------------|-----------------|
+|-----------------------------------------|----------------------------|-----------------------|
 | **Age Group**                           |                            |                       |
 | \<1 years                               | 22.7% (145)                | 6.7% (42)             |
 | 1-4 years                               | 28.5% (988)                | 8.1% (281)            |
@@ -278,9 +278,28 @@ Age_MOI_DiscordZip %>%
          xaxis = list(title = 'Age (years)'))
 ```
 
+The map below depicts, for each zip code, the percent of injuries occurring in that zip code for children from another zip code. Here, lighter colors mean the children injured there are more commonly from another zip code. We see hot spots for "traveler" injuries in Catalina Island, the north and east ends of the county. as well as in the Hollywood Hills.
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+Zip_Discordance_List <- TEMIS_COI %>%
+  group_by(Injury_Zip) %>%
+  summarize(ZIP_Discord_Prop = sum(Zip_Diff_Binary)/n_distinct(Study_ID))
+LACZips <- read.csv("LAC_ZipCodes_List.csv") #narrow to just LAC zip to read
+
+Zip_Discordance_List <- merge(Zip_Discordance_List, LACZipGeo_Injury, by = "Injury_Zip")
+Zip_Discordance_List <- merge(Zip_Discordance_List, LACZips, by = "Injury_Zip")
+
+ggplot(Zip_Discordance_List) + geom_sf(mapping = aes(geometry = geometry, fill = ZIP_Discord_Prop)) + 
+  theme_classic() +
+  labs(title = 'Proportion of Injuries per Zip Code of Children from Another Zip Code') +
+  scale_fill_continuous(name = "Proportion Different\nHome Zip Code")
+  
+```
+
 ## Conclusions
 
-These results demonstrate age-and mechanism-specific patterns in injuries that demonstrate movement patterns of children. Although children are injured outside their home zip code more often with age, they are not injured in zip codes with different socioeconomic levels from their home zip codes. We see that teens who are getting in cars are traveling away from home and having traffic accidents far from home, but are injured in neighborhoods similar to their own.
+These results demonstrate age-and mechanism-specific patterns in injuries that demonstrate movement patterns of children. Although children are injured outside their home zip code more often with age, they are not injured in zip codes with different socioeconomic levels from their home zip codes. We see that teens who are getting in cars are traveling away from home and having traffic accidents far from home, but are injured in neighborhoods similar to their own. We also see that there are areas where more people are injured from outside the zip code, as well as areas where most injuries are occurring for residents of that area.
 
 ## References
 
