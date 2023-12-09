@@ -1,0 +1,45 @@
+---
+title: "PM566-Website"
+---
+
+Trauma is the leading cause of death in children, and therefor injury prevention efforts are paramount to reducing childhood morbidity and mortality. Since age and location effects what ways in which children are injured, this project explores the interplay between age, mechanism of injury, and whether a child was close to home or in a neighborhood with a different makeup than their own when they were injured.
+
+To assess neighborhood characteristics, the Childhood Opportunity Index (COI) was used.
+
+The figures below show the percent of childhood traumas with home and injury zip codes of different COI level (above) and different zip code (below). The size of the circle is the number of injuries at that age and mechanism of injury, so we can see how common different injuries are at different ages as well as how often the injury occurred near home versus further away.
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+#use eho=FALSE to not show the code for the final
+TEMIS_COI <- read.csv("TEMIS_COI_InterFigs.csv")
+
+library(plotly)
+library(dplyr)
+library(magrittr)
+
+Age_MOI_DiscordCOI <- TEMIS_COI %>% 
+  group_by(Age_Years, MOI_LargerBins) %>%
+  summarize(COI_Discord_n = sum(COI_Discord),
+            COI_Discord_prop = sum(COI_Discord)/n_distinct(Study_ID))
+
+Age_MOI_DiscordZip <- TEMIS_COI %>% 
+  group_by(Age_Years, MOI_LargerBins) %>%
+  summarize(Zip_Discord_n = sum(Zip_Diff_Binary),
+            Zip_Discord_prop = sum(Zip_Diff_Binary)/n_distinct(Study_ID))
+
+# Scatterplot
+Age_MOI_DiscordCOI %>% 
+  plot_ly(x = ~Age_Years, y = ~COI_Discord_prop,
+          type = 'scatter', mode = 'markers', color = ~MOI_LargerBins,
+          size = ~COI_Discord_n, sizes = c(5, 70), marker = list(sizemode='diameter', opacity=0.5)) %>%
+  layout(title = 'Age, Mechanism, and Home/Injury COI Discordance in Childhood Trauma',
+         yaxis = list(title ='Proportion with Discordant COI'),
+         xaxis = list(title = 'Age (years)'))
+
+Age_MOI_DiscordZip %>% 
+  plot_ly(x = ~Age_Years, y = ~Zip_Discord_prop,
+          type = 'scatter', mode = 'markers', color = ~MOI_LargerBins,
+          size = ~Zip_Discord_n, sizes = c(5, 70), marker = list(sizemode='diameter', opacity=0.5)) %>%
+  layout(title = 'Age, Mechanism, and Home/Injury Zip Code Discordance in Childhood Trauma',
+         yaxis = list(title ='Proportion with Discordant Home/Injury Zip Code'),
+         xaxis = list(title = 'Age (years)'))
+```

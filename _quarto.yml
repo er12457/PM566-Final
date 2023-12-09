@@ -1,0 +1,22 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "PM566 Website: Erin Ross"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home #changes the title of the page that displays on your homepage (not title when you click this page)
+      - href: about.qmd #seperate page of site, will use the title of the document unless you change (above)
+        text: Report
+      
+
+format:
+  html:
+    theme: cosmo
+    css: styles.css
+    toc: true
+
+editor: visual
+
